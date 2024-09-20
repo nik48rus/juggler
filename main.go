@@ -2,18 +2,12 @@ package main
 
 import (
 	"bufio"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/md5"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"jungler/security"
 )
 
 var password = ""
@@ -86,8 +80,8 @@ func (s *ApiKeyStorage) LoadKeys(filename string) (*ApiKeyStorage, error) {
 		if err != nil {
 			return nil, err
 		}
-		id := string(decryptIt(idBytes, password))
-		data := string(decryptIt(dataBytes, password))
+		id := string(security.DecryptIt(idBytes, password))
+		data := string(security.DecryptIt(dataBytes, password))
 		if id == "" || data == "" {
 			return nil, fmt.Errorf("Invalid data")
 		}
@@ -116,8 +110,8 @@ func (s *ApiKeyStorage) SaveKeys(storage *ApiKeyStorage, filename string) error 
 
 	writer := bufio.NewWriter(file)
 	for id, key := range storage.keys {
-		encryptedID := base64.StdEncoding.EncodeToString(encryptIt([]byte(id), password))
-		encryptedData := base64.StdEncoding.EncodeToString(encryptIt([]byte(key.GetData()), password))
+		encryptedID := base64.StdEncoding.EncodeToString(security.EncryptIt([]byte(id), password))
+		encryptedData := base64.StdEncoding.EncodeToString(security.EncryptIt([]byte(key.GetData()), password))
 		_, err = writer.WriteString(encryptedID + ":" + encryptedData + "\n")
 		if err != nil {
 			return err
@@ -125,54 +119,6 @@ func (s *ApiKeyStorage) SaveKeys(storage *ApiKeyStorage, filename string) error 
 	}
 
 	return writer.Flush()
-}
-
-// mdHashing returns the MD5 hash of the input string
-func mdHashing(input string) string {
-	byteInput := []byte(input)
-	md5Hash := md5.Sum(byteInput)
-	return hex.EncodeToString(md5Hash[:])
-}
-
-// encryptIt encrypts the value using the key phrase
-func encryptIt(value []byte, keyPhrase string) []byte {
-	aesBlock, err := aes.NewCipher([]byte(mdHashing(keyPhrase)))
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	gcmInstance, err := cipher.NewGCM(aesBlock)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	nonce := make([]byte, gcmInstance.NonceSize())
-	_, _ = io.ReadFull(rand.Reader, nonce)
-
-	return gcmInstance.Seal(nonce, nonce, value, nil)
-}
-
-// decryptIt decrypts the ciphered text using the key phrase
-func decryptIt(ciphered []byte, keyPhrase string) []byte {
-	aesBlock, err := aes.NewCipher([]byte(mdHashing(keyPhrase)))
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	gcmInstance, err := cipher.NewGCM(aesBlock)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	nonceSize := gcmInstance.NonceSize()
-	nonce, cipheredText := ciphered[:nonceSize], ciphered[nonceSize:]
-
-	originalText, err := gcmInstance.Open(nil, nonce, cipheredText, nil)
-	if err != nil {
-		fmt.Println("Error while decrypting, wrong password")
-		return nil
-	}
-	return originalText
 }
 
 func main() {
