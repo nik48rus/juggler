@@ -12,19 +12,23 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 var password = ""
+var file_path = ""
 
 type ApiKey struct {
 	data string
 }
 
+// SetData sets the data of the ApiKey
 func (a *ApiKey) SetData(data string) {
 	a.data = data
 }
 
+// GetData returns the data of the ApiKey
 func (a *ApiKey) GetData() string {
 	return a.data
 }
@@ -33,58 +37,42 @@ type ApiKeyStorage struct {
 	keys map[string]ApiKey
 }
 
+// NewApiKeyStorage creates a new ApiKeyStorage
 func NewApiKeyStorage() *ApiKeyStorage {
 	return &ApiKeyStorage{
 		keys: make(map[string]ApiKey),
 	}
 }
 
+// AddKey adds a new key to the storage
 func (s *ApiKeyStorage) AddKey(id string, key ApiKey) {
 	s.keys[id] = key
 }
 
+// GetKey returns the key with the given id
 func (s *ApiKeyStorage) GetKey(id string) (ApiKey, bool) {
 	key, exists := s.keys[id]
 	return key, exists
 }
 
+// DeleteKey deletes the key with the given id
 func (s *ApiKeyStorage) DeleteKey(id string) {
-	if _, exists := s.keys[id]; !exists {
-		return
-	}
 	delete(s.keys, id)
 }
 
+// SaveKeys saves the keys to a file
 func (s *ApiKeyStorage) LoadKeys(filename string) (*ApiKeyStorage, error) {
 	s = NewApiKeyStorage()
 
-	// file, err := os.Open(filename)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer file.Close()
-
-	hashingFile, err := os.Open(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer hashingFile.Close()
+	defer file.Close()
 
-	// scanner := bufio.NewScanner(file)
-	scanerDecrypted := bufio.NewScanner(hashingFile)
-	// for scanner.Scan() {
-	// 	line := scanner.Text()
-	// 	parts := strings.SplitN(line, ":", 2)
-	// 	if len(parts) != 2 {
-	// 		continue
-	// 	}
-	// 	id := parts[0]
-	// 	data := parts[1]
-	// 	s.AddKey(id, ApiKey{data: data})
-	// }
-
-	for scanerDecrypted.Scan() {
-		line := scanerDecrypted.Text()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
 			continue
@@ -106,84 +94,73 @@ func (s *ApiKeyStorage) LoadKeys(filename string) (*ApiKeyStorage, error) {
 		s.AddKey(id, ApiKey{data: data})
 	}
 
-	// if err := scanner.Err(); err != nil {
-	// 	return nil, err
-	// }
-
-	if err := scanerDecrypted.Err(); err != nil {
+	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
 	return s, nil
 }
 
+// SaveKeys saves the keys to a file
 func (s *ApiKeyStorage) SaveKeys(storage *ApiKeyStorage, filename string) error {
-	// file, err := os.Create(filename)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer file.Close()
-
-	hashingFile, err := os.Create(filename)
-	if err != nil {
-		fmt.Println("Error creating file")
+	fileDir := filepath.Dir(filename)
+	if err := os.MkdirAll(fileDir, os.ModePerm); err != nil {
 		return err
 	}
-	defer hashingFile.Close()
 
-	// writer := bufio.NewWriter(file)
-	hashingWriter := bufio.NewWriter(hashingFile)
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
 	for id, key := range storage.keys {
-		// _, err := writer.WriteString(id + ":" + key.GetData() + "\n")
-		// _, err = hashingWriter.WriteString(string(encryptIt([]byte(id), password)) + ":" + string(encryptIt([]byte(key.GetData()), password)) + "\n")
 		encryptedID := base64.StdEncoding.EncodeToString(encryptIt([]byte(id), password))
 		encryptedData := base64.StdEncoding.EncodeToString(encryptIt([]byte(key.GetData()), password))
-		_, err = hashingWriter.WriteString(encryptedID + ":" + encryptedData + "\n")
+		_, err = writer.WriteString(encryptedID + ":" + encryptedData + "\n")
 		if err != nil {
 			return err
 		}
 	}
 
-	return hashingWriter.Flush()
-	// return writer.Flush()
+	return writer.Flush()
 }
 
+// mdHashing returns the MD5 hash of the input string
 func mdHashing(input string) string {
 	byteInput := []byte(input)
 	md5Hash := md5.Sum(byteInput)
-	return hex.EncodeToString(md5Hash[:]) // by referring to it as a string
+	return hex.EncodeToString(md5Hash[:])
 }
 
+// encryptIt encrypts the value using the key phrase
 func encryptIt(value []byte, keyPhrase string) []byte {
-
 	aesBlock, err := aes.NewCipher([]byte(mdHashing(keyPhrase)))
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 	}
 
 	gcmInstance, err := cipher.NewGCM(aesBlock)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 	}
 
 	nonce := make([]byte, gcmInstance.NonceSize())
 	_, _ = io.ReadFull(rand.Reader, nonce)
 
-	cipheredText := gcmInstance.Seal(nonce, nonce, value, nil)
-
-	return cipheredText
+	return gcmInstance.Seal(nonce, nonce, value, nil)
 }
 
+// decryptIt decrypts the ciphered text using the key phrase
 func decryptIt(ciphered []byte, keyPhrase string) []byte {
-	hashedPhrase := mdHashing(keyPhrase)
-	aesBlock, err := aes.NewCipher([]byte(hashedPhrase))
+	aesBlock, err := aes.NewCipher([]byte(mdHashing(keyPhrase)))
 	if err != nil {
-		fmt.Println("Error while creating new cipher")
 		log.Fatalln(err)
 	}
+
 	gcmInstance, err := cipher.NewGCM(aesBlock)
 	if err != nil {
-		fmt.Println("Error while creating new GCM")
 		log.Fatalln(err)
 	}
 
@@ -199,15 +176,20 @@ func decryptIt(ciphered []byte, keyPhrase string) []byte {
 }
 
 func main() {
-	// create a new ApiKeyStorage
-
-	// get password from environment variable
 	passwordUser := os.Getenv("JUGGLER_PASSWORD")
 	if passwordUser == "" {
 		fmt.Println("JUGGLER_PASSWORD environment variable not set")
 		return
 	}
 	password = passwordUser
+
+	// JUGGLER_DB_PATH
+	db_path := os.Getenv("JUGGLER_DB_PATH")
+	if db_path == "" {
+		db_path = "./"
+	}
+
+	file_path = db_path + "db.jnglr"
 
 	args := os.Args[1:]
 
@@ -220,10 +202,9 @@ func main() {
 	key := args[1]
 
 	storage := NewApiKeyStorage()
-	storage, err := storage.LoadKeys("data.jnglr")
+	storage, err := storage.LoadKeys(file_path)
 	if err != nil {
 		fmt.Println("Error loading keys:", err)
-		fmt.Println("jnglr file not found")
 		storage = NewApiKeyStorage()
 	}
 
@@ -235,7 +216,7 @@ func main() {
 		}
 		value := args[2]
 		storage.AddKey(key, ApiKey{data: value})
-		err := storage.SaveKeys(storage, "data.jnglr")
+		err := storage.SaveKeys(storage, file_path)
 		if err != nil {
 			fmt.Println("Error saving keys:", err)
 			return
@@ -247,44 +228,24 @@ func main() {
 			fmt.Println("Key not found")
 			return
 		}
-		fmt.Println("Key:", apiKey.GetData())
+		fmt.Println(apiKey.GetData())
 	case "delete":
 		storage.DeleteKey(key)
-		err := storage.SaveKeys(storage, "data.jnglr")
+		err := storage.SaveKeys(storage, file_path)
 		if err != nil {
-			fmt.Println("Error delete key:", err)
+			fmt.Println("Error deleting key:", err)
 			return
 		}
 	default:
 		fmt.Println("Unknown command. Use 'set' or 'get'")
 	}
-
-	// storage := NewApiKeyStorage()
-	// st, _ := storage.LoadKeys("data.jnglr")
-	// for k, v := range st.keys {
-	// 	fmt.Println(k, v)
-	// }
-
-	// // add a new ApiKey to the storage
-	// storage.AddKey("1", ApiKey{data: "SomeApiKeyData"})
-	// // get the ApiKey from the storage
-	// key, exists := storage.GetKey("1")
-	// if exists {
-	// 	fmt.Println("Key exists:", key.GetData())
-	// } else {
-	// 	fmt.Println("Key does not exist")
-	// }
-	// // delete the ApiKey from the storage
-	// storage.DeleteKey("1")
 }
 
 /*
-Жонглер ключей API
-Вам нужно реализовать хранилище ключей API, которое позволяет добавлять, получать и удалять ключи API.
 Каждый ключ API представлен структурой ApiKey, которая содержит строку data.
 Хранилище ключей API представлено структурой ApiKeyStorage, которая содержит карту ключей API,
 где ключом является строка и значением является ключ API.
-Вам нужно реализовать следующие методы для хранилища ключей API:
+
 - NewApiKeyStorage() *ApiKeyStorage - создает новое хранилище ключей API.
 - AddKey(id string, key ApiKey) - добавляет ключ API в хранилище по указанному идентификатору.
 - GetKey(id string) (ApiKey, bool) - возвращает ключ API из хранилища по указанному идентификатору.
