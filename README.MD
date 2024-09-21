@@ -11,7 +11,7 @@
 
 создание ключа
 ```bash
-./juggler save key value
+./juggler set key value
 ```
 
 получение значения по ключу
