@@ -1,33 +1,43 @@
 # Juggler
 
+lightweight api key rotation tool
+
 <img src="logo.png" alt="logo" style="width:256px;"/>
 
-## Управление
-настройка
-| Переменная | Описание |
-| --- | --- |
-| JUGGLER_DB_PATH | Путь к базе данных |
-| JUGGLER_PASSWORD | Пароль для шифрования данных |
+## Setting up and how to use
+#### environment
 
-создание ключа
+| Variable | Description | Required |
+| --- | --- | --- |
+| JUGGLER_DB_PATH | path to db | false |
+| JUGGLER_PASSWORD | password for crypt data | true |
+
+#### add key to db
 ```bash
 ./juggler set key value
 ```
 
-получение значения по ключу
+#### get data by key
 ```bash
 ./juggler get key
 ```
 
-## Фунции
+## Functions
 #### CLI
-- [x] Сохранение ключа
-- [x] Получение значения по ключу
-- [x] Удаление ключа
-#### Фичи
-- [x] Шифрование данных
+- [x] save key
+- [x] get data by key
+- [x] delete key
+#### Web & gRPC
+- [ ] save key
+- [ ] get data by key
+- [ ] delete key
+#### Product features
+- [x] crypt data
+- [ ] number of key usages
+- [ ] usage limit period
+- [ ] issuing keys in random order for each resource
 
-## Сборка
+## Build
 ```bash
 go build -o juggler main.go
 ```
